@@ -1,30 +1,53 @@
 {
   "expo": {
-    "name": "Lumino-React-Native",
-    "slug": "Lumino-React-Native",
+    "name": "Lumino",
+    "slug": "lumino",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0a0a0f"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lumino021.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Lumino needs microphone access to record voice messages for real-time translation in Translation Rooms.",
+        "NSCameraUsageDescription": "Lumino uses the camera to scan QR codes for joining Translation Rooms."
+      }
     },
     "android": {
+      "package": "com.lumino021.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0a0a0f",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundImage": "./assets/android-icon-background.png"
       },
-      "predictiveBackGestureEnabled": false
+      "permissions": [
+        "RECORD_AUDIO",
+        "CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Lumino needs microphone access to record voice messages."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Lumino uses the camera to scan QR codes."
+        }
+      ]
+    ]
   }
 }
