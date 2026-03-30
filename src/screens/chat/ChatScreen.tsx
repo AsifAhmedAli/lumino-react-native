@@ -4,7 +4,12 @@ import {
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Audio } from "expo-av";
+import {
+  useAudioRecorder,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from "expo-audio";
 import * as Speech from "expo-speech";
 import { colors, radii, spacing } from "../../theme";
 import { api } from "../../services/api";
@@ -19,9 +24,10 @@ export function ChatScreen({ route, navigation }: any) {
   const [loadingMsgs, setLoadingMsgs] = useState(!!initialConvId);
   const [convId, setConvId] = useState<string | null>(initialConvId);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
   const [recordDuration, setRecordDuration] = useState(0);
   const [transcribing, setTranscribing] = useState(false);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const flatListRef = useRef<FlatList>(null);
   const streamTextRef = useRef("");
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
@@ -117,16 +123,15 @@ export function ChatScreen({ route, navigation }: any) {
   // Voice recording
   const startRecording = async () => {
     try {
-      const perm = await Audio.requestPermissionsAsync();
+      const perm = await requestRecordingPermissionsAsync();
       if (!perm.granted) {
         Alert.alert("Permission Required", "Microphone access is needed for voice messages.");
         return;
       }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording: rec } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(rec);
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setIsRecording(true);
       setRecordDuration(0);
       timerRef.current = setInterval(() => setRecordDuration((d) => d + 1), 1000);
     } catch {
@@ -136,21 +141,21 @@ export function ChatScreen({ route, navigation }: any) {
 
   const cancelRecording = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
-    try { await recording?.stopAndUnloadAsync(); } catch {}
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-    setRecording(null);
+    try { recorder.stop(); } catch {}
+    await setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+    setIsRecording(false);
     setRecordDuration(0);
   };
 
   const sendRecording = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (!recording) return;
+    if (!isRecording) return;
     try {
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      setRecording(null);
+      recorder.stop();
+      const uri = recorder.uri;
+      setIsRecording(false);
       setRecordDuration(0);
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      await setAudioModeAsync({ allowsRecording: false }).catch(() => {});
 
       if (!uri) return;
       setTranscribing(true);
@@ -263,7 +268,7 @@ export function ChatScreen({ route, navigation }: any) {
       )}
 
       <View style={styles.inputBar}>
-        {recording || transcribing ? (
+        {isRecording || transcribing ? (
           <View style={styles.voiceBar}>
             {transcribing ? (
               <>

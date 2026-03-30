@@ -3,7 +3,12 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Audio } from "expo-av";
+import {
+  useAudioRecorder,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from "expo-audio";
 import QRCode from "react-native-qrcode-svg";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -17,9 +22,10 @@ export function RoomDetailScreen({ route, navigation }: any) {
   const [participants, setParticipants] = useState<RoomParticipant[]>([]);
   const [messages, setMessages] = useState<VoiceMessage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
   const [recordDuration, setRecordDuration] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const scrollRef = useRef<ScrollView>(null);
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const sseAbortRef = useRef<{ abort: () => void } | null>(null);
@@ -84,16 +90,15 @@ export function RoomDetailScreen({ route, navigation }: any) {
   // Voice recording
   const startRecording = async () => {
     try {
-      const perm = await Audio.requestPermissionsAsync();
+      const perm = await requestRecordingPermissionsAsync();
       if (!perm.granted) {
         Alert.alert("Permission Required", "Microphone access is needed for voice messages.");
         return;
       }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording: rec } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(rec);
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setIsRecording(true);
       setRecordDuration(0);
       timerRef.current = setInterval(() => setRecordDuration((d) => d + 1), 1000);
     } catch {
@@ -103,21 +108,21 @@ export function RoomDetailScreen({ route, navigation }: any) {
 
   const cancelRecording = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
-    try { await recording?.stopAndUnloadAsync(); } catch {}
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
-    setRecording(null);
+    try { recorder.stop(); } catch {}
+    await setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+    setIsRecording(false);
     setRecordDuration(0);
   };
 
   const sendRecording = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (!recording) return;
+    if (!isRecording) return;
     try {
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      setRecording(null);
+      recorder.stop();
+      const uri = recorder.uri;
+      setIsRecording(false);
       setRecordDuration(0);
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
+      await setAudioModeAsync({ allowsRecording: false }).catch(() => {});
       if (!uri) return;
       setUploading(true);
       await api.uploadRoomVoice(roomId, uri);
@@ -172,7 +177,7 @@ export function RoomDetailScreen({ route, navigation }: any) {
                 <ActivityIndicator color={colors.primary} />
                 <Text style={styles.recLabel}>Sending...</Text>
               </View>
-            ) : recording ? (
+            ) : isRecording ? (
               <View style={styles.recRow}>
                 <TouchableOpacity onPress={cancelRecording}>
                   <Ionicons name="close-circle" size={28} color={colors.mutedForeground} />

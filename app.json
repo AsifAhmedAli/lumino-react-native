@@ -37,7 +37,7 @@
     "plugins": [
       "expo-secure-store",
       [
-        "expo-av",
+        "expo-audio",
         {
           "microphonePermission": "Lumino needs microphone access to record voice messages."
         }
@@ -47,7 +47,8 @@
         {
           "cameraPermission": "Lumino uses the camera to scan QR codes."
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }
