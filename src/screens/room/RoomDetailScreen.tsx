@@ -33,10 +33,14 @@ export function RoomDetailScreen({ route, navigation }: any) {
   const scrollRef = useRef<ScrollView>(null);
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const sseAbortRef = useRef<{ abort: () => void } | null>(null);
+  const mountedRef = useRef(true);
+  const sseRetryRef = useRef(0);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadRoom();
     return () => {
+      mountedRef.current = false;
       sseAbortRef.current?.abort();
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -62,11 +66,14 @@ export function RoomDetailScreen({ route, navigation }: any) {
   };
 
   const connectSSE = () => {
+    if (!mountedRef.current) return;
     sseAbortRef.current?.abort();
 
+    sseRetryRef.current = 0; // Reset on fresh connect
     const handle = api.connectSSE(
       `/api/rooms/${roomId}/events`,
       (event) => {
+        sseRetryRef.current = 0; // Reset backoff on successful event
         switch (event.type) {
           case "participant:joined":
             setParticipants((prev) => [
@@ -98,8 +105,11 @@ export function RoomDetailScreen({ route, navigation }: any) {
         }
       },
       () => {
-        // Reconnect after delay
-        setTimeout(() => connectSSE(), 3000);
+        // Reconnect with exponential backoff (3s, 6s, 12s, 24s, max 60s)
+        if (!mountedRef.current) return;
+        sseRetryRef.current = Math.min(sseRetryRef.current + 1, 5);
+        const delay = Math.min(3000 * Math.pow(2, sseRetryRef.current - 1), 60000);
+        setTimeout(() => { if (mountedRef.current) connectSSE(); }, delay);
       }
     );
     sseAbortRef.current = handle;
