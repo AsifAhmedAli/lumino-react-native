@@ -5,6 +5,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import {
   useAudioRecorder,
+  useAudioPlayer,
   RecordingPresets,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
@@ -25,7 +26,10 @@ export function RoomDetailScreen({ route, navigation }: any) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordDuration, setRecordDuration] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [audioSource, setAudioSource] = useState<string | null>(null);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const player = useAudioPlayer(audioSource);
   const scrollRef = useRef<ScrollView>(null);
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const sseAbortRef = useRef<{ abort: () => void } | null>(null);
@@ -73,10 +77,24 @@ export function RoomDetailScreen({ route, navigation }: any) {
           case "participant:left":
             setParticipants((prev) => prev.filter((p) => p.id !== event.participantId));
             break;
-          case "voice:translated":
-            setMessages((prev) => [...prev, event.message]);
+          case "voice:translated": {
+            // SSE sends { messageId, senderName, translatedText, audioBase64, language }
+            // or { message: {...} }
+            const msg = event.message || {
+              id: event.messageId || `sse-${Date.now()}`,
+              senderName: event.senderName || "Unknown",
+              originalText: event.translatedText || "",
+              translations: event.language ? [{
+                language: event.language,
+                translatedText: event.translatedText || "",
+                audioBase64: event.audioBase64,
+              }] : [],
+              createdAt: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, msg]);
             setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
             break;
+          }
         }
       },
       () => {
@@ -131,6 +149,38 @@ export function RoomDetailScreen({ route, navigation }: any) {
       Alert.alert("Error", "Failed to send voice message");
     }
     setUploading(false);
+  };
+
+  // Audio playback
+  const playMessage = (msg: any) => {
+    if (playingId === msg.id) {
+      player.pause();
+      setPlayingId(null);
+      return;
+    }
+
+    // Find audio — check translations for audioUrl or audioBase64
+    let audioSrc: string | null = null;
+    for (const t of msg.translations || []) {
+      if (t.audioUrl) {
+        audioSrc = `${api.baseUrl}${t.audioUrl}`;
+        break;
+      }
+      if (t.audioBase64) {
+        audioSrc = `data:audio/mp3;base64,${t.audioBase64}`;
+        break;
+      }
+    }
+    if (!audioSrc) return;
+
+    setAudioSource(audioSrc);
+    setPlayingId(msg.id);
+    // Player will auto-load the new source
+    setTimeout(() => player.play(), 200);
+  };
+
+  const hasAudio = (msg: any) => {
+    return msg.translations?.some((t: any) => t.audioUrl || t.audioBase64);
   };
 
   const copyLink = async () => {
@@ -205,9 +255,20 @@ export function RoomDetailScreen({ route, navigation }: any) {
             <Text style={styles.sectionTitle}>Messages</Text>
             {messages.map((msg) => (
               <View key={msg.id} style={styles.msgItem}>
-                <Text style={styles.msgSender}>{msg.senderName}</Text>
+                <View style={styles.msgHeader}>
+                  <Text style={styles.msgSender}>{msg.senderName}</Text>
+                  {hasAudio(msg) && (
+                    <TouchableOpacity onPress={() => playMessage(msg)} style={styles.playBtn}>
+                      <Ionicons
+                        name={playingId === msg.id ? "pause-circle" : "play-circle"}
+                        size={28}
+                        color={playingId === msg.id ? colors.primary : colors.mutedForeground}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <Text style={styles.msgText}>{msg.originalText}</Text>
-                {msg.translations?.map((t) => (
+                {msg.translations?.map((t: any) => (
                   <Text key={t.language} style={styles.msgTranslation}>
                     [{t.language.toUpperCase()}] {t.translatedText || t.text}
                   </Text>
@@ -263,7 +324,9 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm },
   badge: { fontSize: 12, color: colors.mutedForeground, backgroundColor: colors.secondary, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radii.full },
   msgItem: { paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  msgSender: { fontSize: 12, fontWeight: "600", color: colors.primary, marginBottom: 2 },
+  msgHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
+  msgSender: { fontSize: 12, fontWeight: "600", color: colors.primary },
+  playBtn: { padding: 2 },
   msgText: { fontSize: 14, color: colors.foreground, lineHeight: 20 },
   msgTranslation: { fontSize: 13, color: colors.mutedForeground, marginTop: 4, fontStyle: "italic" },
   emptyText: { fontSize: 13, color: colors.mutedForeground, textAlign: "center", paddingVertical: spacing.md },

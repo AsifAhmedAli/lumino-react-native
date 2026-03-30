@@ -67,6 +67,8 @@ export interface VoiceTranslation {
   language: string;
   text?: string;
   translatedText?: string;
+  audioUrl?: string | null;
+  audioBase64?: string;
 }
 
 export interface InvitedUser {
