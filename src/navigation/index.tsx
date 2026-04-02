@@ -71,8 +71,6 @@ function RoomNavigator() {
 }
 
 function MainTabs() {
-  const isAdmin = useAuthStore((s) => s.isAdmin);
-
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -94,9 +92,7 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="ChatTab" component={ChatNavigator} options={{ title: "Chats" }} />
-      {isAdmin && (
-        <Tab.Screen name="RoomTab" component={RoomNavigator} options={{ title: "Rooms" }} />
-      )}
+      <Tab.Screen name="RoomTab" component={RoomNavigator} options={{ title: "Rooms" }} />
       <Tab.Screen name="SettingsTab" component={SettingsScreen} options={{ title: "Settings", headerShown: true, headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.foreground, headerShadowVisible: false }} />
     </Tab.Navigator>
   );

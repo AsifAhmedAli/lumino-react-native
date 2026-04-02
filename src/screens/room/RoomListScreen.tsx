@@ -7,6 +7,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, radii, spacing } from "../../theme";
 import { api } from "../../services/api";
+import { useAuthStore } from "../../store/auth";
 import type { Room } from "../../types";
 
 const LANGUAGES = [
@@ -21,6 +22,7 @@ const LANGUAGES = [
 ];
 
 export function RoomListScreen({ navigation }: any) {
+  const isAdmin = useAuthStore((s) => s.isAdmin);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,12 +33,29 @@ export function RoomListScreen({ navigation }: any) {
 
   const load = useCallback(async () => {
     try {
-      const data = await api.request<{ rooms: Room[] }>("/api/rooms");
-      setRooms(data.rooms || []);
+      const results: Room[] = [];
+
+      // Admin: load hosted rooms
+      if (isAdmin) {
+        const hosted = await api.request<{ rooms: Room[] }>("/api/rooms");
+        results.push(...(hosted.rooms || []));
+      }
+
+      // All users: load rooms they've joined as participant
+      try {
+        const joined = await api.request<{ rooms: Room[] }>("/api/rooms/my");
+        // Avoid duplicates (admin might host + participate)
+        const hostedIds = new Set(results.map((r) => r.id));
+        for (const r of joined.rooms || []) {
+          if (!hostedIds.has(r.id)) results.push(r);
+        }
+      } catch {}
+
+      setRooms(results);
     } catch {}
     setLoading(false);
     setRefreshing(false);
-  }, []);
+  }, [isAdmin]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -98,9 +117,11 @@ export function RoomListScreen({ navigation }: any) {
         }
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => setCreateModal(true)}>
-        <Ionicons name="add" size={28} color={colors.white} />
-      </TouchableOpacity>
+      {isAdmin && (
+        <TouchableOpacity style={styles.fab} onPress={() => setCreateModal(true)}>
+          <Ionicons name="add" size={28} color={colors.white} />
+        </TouchableOpacity>
+      )}
 
       {/* Create Room Modal */}
       <Modal visible={createModal} transparent animationType="slide">

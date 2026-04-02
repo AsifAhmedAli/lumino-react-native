@@ -20,6 +20,7 @@ import type { VoiceMessage, RoomParticipant } from "../../types";
 export function RoomDetailScreen({ route, navigation }: any) {
   const { roomId } = route.params;
   const [room, setRoom] = useState<any>(null);
+  const [isHost, setIsHost] = useState(true);
   const [participants, setParticipants] = useState<RoomParticipant[]>([]);
   const [messages, setMessages] = useState<VoiceMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,8 +51,8 @@ export function RoomDetailScreen({ route, navigation }: any) {
     try {
       const data = await api.request<any>(`/api/rooms/${roomId}`);
       setRoom(data);
+      setIsHost(data.isHost !== false);
       setParticipants(data.participants || []);
-      // API returns "messages", not "voiceMessages"
       setMessages(data.messages || []);
       navigation.setOptions({ title: data.name || "Room" });
 
@@ -218,7 +219,7 @@ export function RoomDetailScreen({ route, navigation }: any) {
           </View>
         )}
 
-        {room.status !== "closed" && (
+        {room.status !== "closed" && isHost && (
           <View style={styles.card}>
             <View style={styles.qrCenter}>
               <QRCode value={roomLink} size={160} backgroundColor="transparent" color={colors.foreground} />
