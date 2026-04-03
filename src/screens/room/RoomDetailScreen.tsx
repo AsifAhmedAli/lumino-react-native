@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
+  Modal, FlatList,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -17,6 +18,15 @@ import { colors, radii, spacing } from "../../theme";
 import { api } from "../../services/api";
 import type { VoiceMessage, RoomParticipant } from "../../types";
 
+const LANGUAGES = [
+  { id: "en", label: "English" }, { id: "es", label: "Spanish" }, { id: "fr", label: "French" },
+  { id: "de", label: "German" }, { id: "it", label: "Italian" }, { id: "pt", label: "Portuguese" },
+  { id: "ru", label: "Russian" }, { id: "zh", label: "Chinese" }, { id: "ja", label: "Japanese" },
+  { id: "ko", label: "Korean" }, { id: "ar", label: "Arabic" }, { id: "hi", label: "Hindi" },
+  { id: "tr", label: "Turkish" }, { id: "nl", label: "Dutch" }, { id: "pl", label: "Polish" },
+  { id: "sv", label: "Swedish" }, { id: "uk", label: "Ukrainian" }, { id: "sk", label: "Slovak" },
+];
+
 export function RoomDetailScreen({ route, navigation }: any) {
   const { roomId } = route.params;
   const [room, setRoom] = useState<any>(null);
@@ -28,6 +38,7 @@ export function RoomDetailScreen({ route, navigation }: any) {
   const [recordDuration, setRecordDuration] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [langPickerFor, setLangPickerFor] = useState<string | null>(null);
   const [audioSource, setAudioSource] = useState<string | null>(null);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const player = useAudioPlayer(audioSource);
@@ -194,6 +205,22 @@ export function RoomDetailScreen({ route, navigation }: any) {
     return msg.translations?.some((t: any) => t.audioUrl || t.audioBase64);
   };
 
+  const changeLanguage = async (participantId: string, lang: string) => {
+    try {
+      const res = await api.request(`/api/rooms/${roomId}/participants/${participantId}`, {
+        method: "PATCH",
+        body: { targetLanguage: lang },
+      });
+      setParticipants((prev) =>
+        prev.map((p) => (p.id === participantId ? { ...p, targetLanguage: lang } : p))
+      );
+      setLangPickerFor(null);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert("Error", "Failed to change language");
+    }
+  };
+
   const copyLink = async () => {
     if (!room) return;
     await Clipboard.setStringAsync(`${api.baseUrl}/room/${room.code}`);
@@ -301,12 +328,57 @@ export function RoomDetailScreen({ route, navigation }: any) {
               <View key={p.id} style={styles.participantRow}>
                 <View style={[styles.connDot, { backgroundColor: p.isConnected ? colors.success : colors.destructive }]} />
                 <Text style={styles.pName}>{p.name}</Text>
-                <Text style={styles.pLang}>{p.targetLanguage?.toUpperCase()}</Text>
+                {isHost ? (
+                  <TouchableOpacity
+                    onPress={() => setLangPickerFor(p.id)}
+                    style={styles.pLangBtn}
+                  >
+                    <Text style={styles.pLangBtnText}>
+                      {LANGUAGES.find((l) => l.id === p.targetLanguage)?.label || p.targetLanguage?.toUpperCase()}
+                    </Text>
+                    <Ionicons name="chevron-down" size={12} color={colors.primary} />
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.pLang}>{p.targetLanguage?.toUpperCase()}</Text>
+                )}
               </View>
             ))
           )}
         </View>
       </ScrollView>
+
+      {/* Language Picker Modal */}
+      <Modal visible={!!langPickerFor} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Language</Text>
+              <TouchableOpacity onPress={() => setLangPickerFor(null)}>
+                <Ionicons name="close" size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={LANGUAGES}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => {
+                const current = participants.find((p) => p.id === langPickerFor);
+                const isSelected = current?.targetLanguage === item.id;
+                return (
+                  <TouchableOpacity
+                    style={[styles.langItem, isSelected && styles.langItemActive]}
+                    onPress={() => langPickerFor && changeLanguage(langPickerFor, item.id)}
+                  >
+                    <Text style={[styles.langItemText, isSelected && { color: colors.primary, fontWeight: "600" }]}>
+                      {item.label}
+                    </Text>
+                    {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -345,4 +417,17 @@ const styles = StyleSheet.create({
   connDot: { width: 6, height: 6, borderRadius: 3 },
   pName: { flex: 1, fontSize: 14, color: colors.foreground },
   pLang: { fontSize: 12, color: colors.mutedForeground, backgroundColor: colors.secondary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radii.sm },
+  pLangBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: colors.primaryLight, paddingHorizontal: 8, paddingVertical: 4, borderRadius: radii.sm,
+    borderWidth: 1, borderColor: "rgba(108,71,255,0.2)",
+  },
+  pLangBtnText: { fontSize: 12, color: colors.primary, fontWeight: "500" },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
+  modal: { backgroundColor: colors.card, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, maxHeight: "60%", paddingBottom: 30 },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  modalTitle: { fontSize: 16, fontWeight: "600", color: colors.foreground },
+  langItem: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  langItemActive: { backgroundColor: colors.primaryLight },
+  langItemText: { fontSize: 15, color: colors.foreground },
 });
