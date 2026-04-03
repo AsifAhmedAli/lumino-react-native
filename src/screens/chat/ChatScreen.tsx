@@ -63,9 +63,25 @@ export function ChatScreen({ route, navigation }: any) {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
   }, []);
 
-  const sendMessage = useCallback((text: string) => {
+  const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || streaming) return;
     setInput("");
+
+    // Create conversation if this is the first message
+    let currentConvId = convId;
+    if (!currentConvId) {
+      try {
+        const res = await api.request<{ id: string }>("/api/conversations", {
+          method: "POST",
+          body: { title: "New Conversation" },
+        });
+        currentConvId = res.id;
+        setConvId(currentConvId);
+      } catch {
+        Alert.alert("Error", "Failed to create conversation");
+        return;
+      }
+    }
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
@@ -93,7 +109,7 @@ export function ChatScreen({ route, navigation }: any) {
 
     const handle = api.streamChat(
       allMessages,
-      convId,
+      currentConvId,
       (delta) => {
         streamTextRef.current += delta;
         const currentText = streamTextRef.current;
