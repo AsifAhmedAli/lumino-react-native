@@ -39,6 +39,7 @@ export function RoomDetailScreen({ route, navigation }: any) {
   const [uploading, setUploading] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [langPickerFor, setLangPickerFor] = useState<string | null>(null);
+  const [showSharePanel, setShowSharePanel] = useState(false);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -272,19 +273,36 @@ export function RoomDetailScreen({ route, navigation }: any) {
 
         {room.status !== "closed" && isHost && (
           <View style={styles.card}>
-            <View style={styles.qrCenter}>
-              <QRCode value={roomLink} size={160} backgroundColor="transparent" color={colors.foreground} />
+            {/* Invite bar */}
+            <View style={styles.inviteBar}>
+              <Text style={styles.inviteTitle}>Invite Participants</Text>
+              <View style={styles.inviteBtns}>
+                <TouchableOpacity style={styles.shareBtn} onPress={shareRoom}>
+                  <Ionicons name="share-outline" size={16} color={colors.white} />
+                  <Text style={styles.shareBtnText}>Share</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.copyBtn, showSharePanel && styles.copyBtnActive]}
+                  onPress={() => setShowSharePanel(!showSharePanel)}
+                >
+                  <Ionicons name={showSharePanel ? "chevron-up" : "qr-code-outline"} size={16} color={colors.primary} />
+                  <Text style={styles.copyText}>{showSharePanel ? "Hide" : "QR / Link"}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.shareRow}>
-              <TouchableOpacity style={styles.copyBtn} onPress={copyLink}>
-                <Ionicons name="copy-outline" size={16} color={colors.primary} />
-                <Text style={styles.copyText}>Copy Link</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.shareBtn} onPress={shareRoom}>
-                <Ionicons name="share-outline" size={16} color={colors.white} />
-                <Text style={styles.shareBtnText}>Share</Text>
-              </TouchableOpacity>
-            </View>
+
+            {/* Expandable QR + Copy Link panel */}
+            {showSharePanel && (
+              <View style={styles.qrPanel}>
+                <View style={styles.qrCenter}>
+                  <QRCode value={roomLink} size={160} backgroundColor="transparent" color={colors.foreground} />
+                </View>
+                <TouchableOpacity style={styles.copyLinkRow} onPress={copyLink}>
+                  <Text style={styles.linkText} numberOfLines={1}>{roomLink}</Text>
+                  <Ionicons name="copy-outline" size={14} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
 
@@ -423,12 +441,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(239,68,68,0.1)", borderRadius: radii.md,
   },
   closedText: { color: colors.destructive, fontWeight: "500" },
-  qrCenter: { alignItems: "center", paddingVertical: spacing.md },
-  shareRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.md, marginTop: spacing.md },
-  copyBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: 16, paddingVertical: 8, borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary },
-  copyText: { color: colors.primary, fontWeight: "500", fontSize: 13 },
-  shareBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: 16, paddingVertical: 8, borderRadius: radii.md, backgroundColor: colors.primary },
-  shareBtnText: { color: colors.white, fontWeight: "600", fontSize: 13 },
+  inviteBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  inviteTitle: { fontSize: 14, fontWeight: "600", color: colors.foreground },
+  inviteBtns: { flexDirection: "row", gap: spacing.sm },
+  shareBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.md, backgroundColor: colors.primary },
+  shareBtnText: { color: colors.white, fontWeight: "600", fontSize: 12 },
+  copyBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border },
+  copyBtnActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+  copyText: { color: colors.primary, fontWeight: "500", fontSize: 12 },
+  qrPanel: { marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  qrCenter: { alignItems: "center", paddingVertical: spacing.sm },
+  copyLinkRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, marginTop: spacing.md, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: colors.secondary, borderRadius: radii.md },
+  linkText: { fontSize: 11, color: colors.mutedForeground, flex: 1 },
   recRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.destructive },
   recTimer: { fontSize: 14, color: colors.destructive, fontVariant: ["tabular-nums"] },
