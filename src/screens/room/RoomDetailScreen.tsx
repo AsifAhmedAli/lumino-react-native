@@ -43,17 +43,17 @@ export function RoomDetailScreen({ route, navigation }: any) {
   const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
-  const sseAbortRef = useRef<{ abort: () => void } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const mountedRef = useRef(true);
-  const sseRetryRef = useRef(0);
+  const prevMsgCountRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
     loadRoom();
     return () => {
       mountedRef.current = false;
-      sseAbortRef.current?.abort();
       if (timerRef.current) clearInterval(timerRef.current);
+      if (pollRef.current) clearInterval(pollRef.current);
       try { playerRef.current?.release(); } catch {}
     };
   }, []);
@@ -65,11 +65,12 @@ export function RoomDetailScreen({ route, navigation }: any) {
       setIsHost(data.isHost !== false);
       setParticipants(data.participants || []);
       setMessages(data.messages || []);
+      prevMsgCountRef.current = (data.messages || []).length;
       navigation.setOptions({ title: data.name || "Room" });
 
-      // Connect SSE after loading
+      // Start polling for real-time updates (SSE doesn't work reliably in React Native)
       if (data.status !== "closed") {
-        connectSSE();
+        startPolling();
       }
     } catch {
       Alert.alert("Error", "Failed to load room");
@@ -77,69 +78,36 @@ export function RoomDetailScreen({ route, navigation }: any) {
     setLoading(false);
   };
 
-  const connectSSE = () => {
-    if (!mountedRef.current) return;
-    sseAbortRef.current?.abort();
-
-    sseRetryRef.current = 0; // Reset on fresh connect
-    const handle = api.connectSSE(
-      `/api/rooms/${roomId}/events`,
-      (event) => {
-        sseRetryRef.current = 0; // Reset backoff on successful event
-        switch (event.type) {
-          case "participant:joined":
-            setParticipants((prev) => [
-              ...prev.filter((p) => p.id !== event.participant.id),
-              event.participant,
-            ]);
-            break;
-          case "participant:left":
-            setParticipants((prev) => prev.filter((p) => p.id !== event.participantId));
-            break;
-          case "voice:translated": {
-            // SSE sends { messageId, senderName, translatedText, audioBase64, language }
-            const msg = event.message || {
-              id: event.messageId || `sse-${Date.now()}`,
-              senderName: event.senderName || "Unknown",
-              originalText: event.translatedText || "",
-              translations: event.language ? [{
-                language: event.language,
-                translatedText: event.translatedText || "",
-                audioBase64: event.audioBase64,
-              }] : [],
-              createdAt: new Date().toISOString(),
-            };
-            setMessages((prev) => [...prev, msg]);
-            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-            // Notification: haptic + sound
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-            break;
-          }
-          case "voice:status":
-            // Processing status updates — ignore
-            break;
-          case "connected":
-          case "heartbeat":
-            // Connection lifecycle events — ignore
-            break;
-          case "participant:updated":
-            if (event.id) {
-              setParticipants((prev) =>
-                prev.map((p) => p.id === event.id ? { ...p, ...event } : p)
-              );
-            }
-            break;
-        }
-      },
-      () => {
-        // Reconnect with exponential backoff (3s, 6s, 12s, 24s, max 60s)
+  const startPolling = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      if (!mountedRef.current) return;
+      try {
+        const data = await api.request<any>(`/api/rooms/${roomId}`);
         if (!mountedRef.current) return;
-        sseRetryRef.current = Math.min(sseRetryRef.current + 1, 5);
-        const delay = Math.min(3000 * Math.pow(2, sseRetryRef.current - 1), 60000);
-        setTimeout(() => { if (mountedRef.current) connectSSE(); }, delay);
+
+        setParticipants(data.participants || []);
+
+        const newMessages = data.messages || [];
+        if (newMessages.length > prevMsgCountRef.current) {
+          setMessages(newMessages);
+          // Notify for new messages
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+        }
+        prevMsgCountRef.current = newMessages.length;
+
+        // Update room status
+        if (data.status) {
+          setRoom((prev: any) => prev ? { ...prev, status: data.status } : prev);
+          if (data.status === "closed" && pollRef.current) {
+            clearInterval(pollRef.current);
+          }
+        }
+      } catch {
+        // Silent — will retry next interval
       }
-    );
-    sseAbortRef.current = handle;
+    }, 3000); // Poll every 3 seconds
   };
 
   // Voice recording
