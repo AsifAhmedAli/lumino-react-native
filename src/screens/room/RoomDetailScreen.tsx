@@ -6,7 +6,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import {
   useAudioRecorder,
-  useAudioPlayer,
+  createAudioPlayer,
   RecordingPresets,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
@@ -39,9 +39,8 @@ export function RoomDetailScreen({ route, navigation }: any) {
   const [uploading, setUploading] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [langPickerFor, setLangPickerFor] = useState<string | null>(null);
-  const [audioSource, setAudioSource] = useState<string | null>(null);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const player = useAudioPlayer(audioSource);
+  const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const sseAbortRef = useRef<{ abort: () => void } | null>(null);
@@ -55,6 +54,7 @@ export function RoomDetailScreen({ route, navigation }: any) {
       mountedRef.current = false;
       sseAbortRef.current?.abort();
       if (timerRef.current) clearInterval(timerRef.current);
+      try { playerRef.current?.release(); } catch {}
     };
   }, []);
 
@@ -174,31 +174,56 @@ export function RoomDetailScreen({ route, navigation }: any) {
   };
 
   // Audio playback
-  const playMessage = (msg: any) => {
+  const playMessage = async (msg: any) => {
+    // Stop current playback
     if (playingId === msg.id) {
-      player.pause();
+      try { playerRef.current?.pause(); } catch {}
       setPlayingId(null);
       return;
     }
 
-    // Find audio — check translations for audioUrl or audioBase64
+    // Find audio URL from translations
     let audioSrc: string | null = null;
     for (const t of msg.translations || []) {
       if (t.audioUrl) {
         audioSrc = `${api.baseUrl}${t.audioUrl}`;
         break;
       }
-      if (t.audioBase64) {
-        audioSrc = `data:audio/mp3;base64,${t.audioBase64}`;
-        break;
-      }
     }
     if (!audioSrc) return;
 
-    setAudioSource(audioSrc);
-    setPlayingId(msg.id);
-    // Player will auto-load the new source
-    setTimeout(() => player.play(), 200);
+    try {
+      // Release previous player
+      try { playerRef.current?.release(); } catch {}
+
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+
+      // Create a new player for this audio
+      const newPlayer = createAudioPlayer(audioSrc);
+      playerRef.current = newPlayer;
+      setPlayingId(msg.id);
+
+      // Wait a moment for loading, then play
+      setTimeout(() => {
+        try {
+          newPlayer.play();
+        } catch (e) {
+          console.warn("Play failed:", e);
+          setPlayingId(null);
+        }
+      }, 300);
+
+      // Listen for playback end
+      newPlayer.addListener("playbackStatusUpdate" as any, (status: any) => {
+        if (status?.didJustFinish || status?.isLoaded === false) {
+          setPlayingId(null);
+        }
+      });
+    } catch (e) {
+      console.warn("Playback error:", e);
+      Alert.alert("Error", "Failed to play audio");
+      setPlayingId(null);
+    }
   };
 
   const hasAudio = (msg: any) => {
