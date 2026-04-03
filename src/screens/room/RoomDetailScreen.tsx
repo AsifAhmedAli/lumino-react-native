@@ -40,6 +40,7 @@ export function RoomDetailScreen({ route, navigation }: any) {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [langPickerFor, setLangPickerFor] = useState<string | null>(null);
   const [showSharePanel, setShowSharePanel] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -67,7 +68,14 @@ export function RoomDetailScreen({ route, navigation }: any) {
       setParticipants(data.participants || []);
       setMessages(data.messages || []);
       prevMsgCountRef.current = (data.messages || []).length;
-      navigation.setOptions({ title: data.name || "Room" });
+      navigation.setOptions({
+        title: data.name || "Room",
+        headerRight: () => (
+          <TouchableOpacity onPress={() => setShowSettings(true)} style={{ padding: 8 }}>
+            <Ionicons name="settings-outline" size={20} color={colors.foreground} />
+          </TouchableOpacity>
+        ),
+      });
 
       // Start polling for real-time updates (SSE doesn't work reliably in React Native)
       if (data.status !== "closed") {
@@ -263,7 +271,8 @@ export function RoomDetailScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll}>
+      {/* Messages area */}
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll} style={{ flex: 1 }}>
         {room.status === "closed" && (
           <View style={styles.closedBanner}>
             <Ionicons name="lock-closed" size={16} color={colors.destructive} />
@@ -271,129 +280,154 @@ export function RoomDetailScreen({ route, navigation }: any) {
           </View>
         )}
 
-        {room.status !== "closed" && isHost && (
-          <View style={styles.card}>
-            {/* Invite bar */}
-            <View style={styles.inviteBar}>
-              <Text style={styles.inviteTitle}>Invite Participants</Text>
-              <View style={styles.inviteBtns}>
-                <TouchableOpacity style={styles.shareBtn} onPress={shareRoom}>
-                  <Ionicons name="share-outline" size={16} color={colors.white} />
-                  <Text style={styles.shareBtnText}>Share</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.copyBtn, showSharePanel && styles.copyBtnActive]}
-                  onPress={() => setShowSharePanel(!showSharePanel)}
-                >
-                  <Ionicons name={showSharePanel ? "chevron-up" : "qr-code-outline"} size={16} color={colors.primary} />
-                  <Text style={styles.copyText}>{showSharePanel ? "Hide" : "QR / Link"}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Expandable QR + Copy Link panel */}
-            {showSharePanel && (
-              <View style={styles.qrPanel}>
-                <View style={styles.qrCenter}>
-                  <QRCode value={roomLink} size={160} backgroundColor="transparent" color={colors.foreground} />
-                </View>
-                <TouchableOpacity style={styles.copyLinkRow} onPress={copyLink}>
-                  <Text style={styles.linkText} numberOfLines={1}>{roomLink}</Text>
-                  <Ionicons name="copy-outline" size={14} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-            )}
+        {messages.length === 0 ? (
+          <View style={styles.emptyMessages}>
+            <Ionicons name="chatbubbles-outline" size={48} color={colors.mutedForeground} />
+            <Text style={styles.emptyMsgText}>No messages yet</Text>
+            <Text style={styles.emptyMsgSub}>Voice messages will appear here</Text>
           </View>
-        )}
-
-        {room.status !== "closed" && (
-          <View style={styles.card}>
-            {uploading ? (
-              <View style={styles.recRow}>
-                <ActivityIndicator color={colors.primary} />
-                <Text style={styles.recLabel}>Sending...</Text>
-              </View>
-            ) : isRecording ? (
-              <View style={styles.recRow}>
-                <TouchableOpacity onPress={cancelRecording}>
-                  <Ionicons name="close-circle" size={28} color={colors.mutedForeground} />
-                </TouchableOpacity>
-                <View style={styles.recDot} />
-                <Text style={styles.recTimer}>
-                  {Math.floor(recordDuration / 60)}:{String(recordDuration % 60).padStart(2, "0")}
-                </Text>
-                <View style={{ flex: 1 }} />
-                <TouchableOpacity onPress={sendRecording} style={styles.sendVoiceBtn}>
-                  <Ionicons name="send" size={18} color={colors.white} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity style={styles.micBtn} onPress={startRecording}>
-                <Ionicons name="mic" size={24} color={colors.primary} />
-                <Text style={styles.micText}>Tap to Record</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        {messages.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Messages</Text>
-            {messages.map((msg) => (
-              <View key={msg.id} style={styles.msgItem}>
-                <View style={styles.msgHeader}>
-                  <Text style={styles.msgSender}>{msg.senderName}</Text>
-                  {hasAudio(msg) && (
-                    <TouchableOpacity onPress={() => playMessage(msg)} style={styles.playBtn}>
-                      <Ionicons
-                        name={playingId === msg.id ? "pause-circle" : "play-circle"}
-                        size={28}
-                        color={playingId === msg.id ? colors.primary : colors.mutedForeground}
-                      />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <Text style={styles.msgText}>{msg.originalText}</Text>
-                {msg.translations?.map((t: any) => (
-                  <Text key={t.language} style={styles.msgTranslation}>
-                    [{t.language.toUpperCase()}] {t.translatedText || t.text}
-                  </Text>
-                ))}
-              </View>
-            ))}
-          </View>
-        )}
-
-        <View style={styles.card}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Participants</Text>
-            <Text style={styles.badge}>{participants.length}</Text>
-          </View>
-          {participants.length === 0 ? (
-            <Text style={styles.emptyText}>No participants yet</Text>
-          ) : (
-            participants.map((p) => (
-              <View key={p.id} style={styles.participantRow}>
-                <View style={[styles.connDot, { backgroundColor: p.isConnected ? colors.success : colors.destructive }]} />
-                <Text style={styles.pName}>{p.name}</Text>
-                {isHost ? (
-                  <TouchableOpacity
-                    onPress={() => setLangPickerFor(p.id)}
-                    style={styles.pLangBtn}
-                  >
-                    <Text style={styles.pLangBtnText}>
-                      {LANGUAGES.find((l) => l.id === p.targetLanguage)?.label || p.targetLanguage?.toUpperCase()}
-                    </Text>
-                    <Ionicons name="chevron-down" size={12} color={colors.primary} />
+        ) : (
+          messages.map((msg) => (
+            <View key={msg.id} style={styles.msgItem}>
+              <View style={styles.msgHeader}>
+                <Text style={styles.msgSender}>{msg.senderName}</Text>
+                {hasAudio(msg) && (
+                  <TouchableOpacity onPress={() => playMessage(msg)} style={styles.playBtn}>
+                    <Ionicons
+                      name={playingId === msg.id ? "pause-circle" : "play-circle"}
+                      size={28}
+                      color={playingId === msg.id ? colors.primary : colors.mutedForeground}
+                    />
                   </TouchableOpacity>
-                ) : (
-                  <Text style={styles.pLang}>{p.targetLanguage?.toUpperCase()}</Text>
                 )}
               </View>
-            ))
+              <Text style={styles.msgText}>{msg.originalText}</Text>
+              {msg.translations?.map((t: any) => (
+                <Text key={t.language} style={styles.msgTranslation}>
+                  [{t.language.toUpperCase()}] {t.translatedText || t.text}
+                </Text>
+              ))}
+            </View>
+          ))
+        )}
+      </ScrollView>
+
+      {/* Recorder bar — fixed at bottom */}
+      {room.status !== "closed" && (
+        <View style={styles.recorderBar}>
+          {uploading ? (
+            <View style={styles.recRow}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.recLabel}>Sending...</Text>
+            </View>
+          ) : isRecording ? (
+            <View style={styles.recRow}>
+              <TouchableOpacity onPress={cancelRecording}>
+                <Ionicons name="close-circle" size={28} color={colors.mutedForeground} />
+              </TouchableOpacity>
+              <View style={styles.recDot} />
+              <Text style={styles.recTimer}>
+                {Math.floor(recordDuration / 60)}:{String(recordDuration % 60).padStart(2, "0")}
+              </Text>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity onPress={sendRecording} style={styles.sendVoiceBtn}>
+                <Ionicons name="send" size={18} color={colors.white} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.micBtn} onPress={startRecording}>
+              <Ionicons name="mic" size={24} color={colors.primary} />
+              <Text style={styles.micText}>Tap to Record</Text>
+            </TouchableOpacity>
           )}
         </View>
-      </ScrollView>
+      )}
+
+      {/* Settings Modal */}
+      <Modal visible={showSettings} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.settingsModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Room Settings</Text>
+              <TouchableOpacity onPress={() => { setShowSettings(false); setShowSharePanel(false); }}>
+                <Ionicons name="close" size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
+              {/* Share & QR */}
+              {isHost && (
+                <View style={styles.settingsSection}>
+                  <Text style={styles.settingsSectionTitle}>Invite Participants</Text>
+                  <View style={styles.inviteBtns}>
+                    <TouchableOpacity style={styles.shareBtn} onPress={shareRoom}>
+                      <Ionicons name="share-outline" size={16} color={colors.white} />
+                      <Text style={styles.shareBtnText}>Share</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.qrToggleBtn, showSharePanel && styles.copyBtnActive]}
+                      onPress={() => setShowSharePanel(!showSharePanel)}
+                    >
+                      <Ionicons name={showSharePanel ? "chevron-up" : "qr-code-outline"} size={16} color={colors.primary} />
+                      <Text style={styles.copyText}>{showSharePanel ? "Hide QR" : "Show QR"}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {showSharePanel && (
+                    <View style={styles.qrPanel}>
+                      <View style={styles.qrCenter}>
+                        <QRCode value={roomLink} size={160} backgroundColor="transparent" color={colors.foreground} />
+                      </View>
+                      <TouchableOpacity style={styles.copyLinkRow} onPress={copyLink}>
+                        <Text style={styles.linkText} numberOfLines={1}>{roomLink}</Text>
+                        <Ionicons name="copy-outline" size={14} color={colors.primary} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Participants */}
+              <View style={styles.settingsSection}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.settingsSectionTitle}>Participants</Text>
+                  <Text style={styles.badge}>{participants.length}</Text>
+                </View>
+                {participants.length === 0 ? (
+                  <Text style={styles.emptyText}>No participants yet</Text>
+                ) : (
+                  participants.map((p) => (
+                    <View key={p.id} style={styles.participantRow}>
+                      <View style={[styles.connDot, { backgroundColor: p.isConnected ? colors.success : colors.destructive }]} />
+                      <Text style={styles.pName}>{p.name}</Text>
+                      {isHost ? (
+                        <TouchableOpacity
+                          onPress={() => { setShowSettings(false); setTimeout(() => setLangPickerFor(p.id), 300); }}
+                          style={styles.pLangBtn}
+                        >
+                          <Text style={styles.pLangBtnText}>
+                            {LANGUAGES.find((l) => l.id === p.targetLanguage)?.label || p.targetLanguage?.toUpperCase()}
+                          </Text>
+                          <Ionicons name="chevron-down" size={12} color={colors.primary} />
+                        </TouchableOpacity>
+                      ) : (
+                        <Text style={styles.pLang}>{p.targetLanguage?.toUpperCase()}</Text>
+                      )}
+                    </View>
+                  ))
+                )}
+              </View>
+
+              {/* Room Status */}
+              <View style={styles.settingsSection}>
+                <Text style={styles.settingsSectionTitle}>Room Status</Text>
+                <Text style={styles.statusText}>
+                  {room.status === "active" ? "Active" : room.status === "paused" ? "Paused" : "Closed"}
+                </Text>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Language Picker Modal */}
       <Modal visible={!!langPickerFor} transparent animationType="slide">
@@ -434,15 +468,25 @@ export function RoomDetailScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  scroll: { padding: spacing.lg, gap: spacing.lg, paddingBottom: 40 },
+  scroll: { padding: spacing.lg, paddingBottom: 20 },
+  emptyMessages: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 120, gap: spacing.sm },
+  emptyMsgText: { fontSize: 16, fontWeight: "500", color: colors.mutedForeground },
+  emptyMsgSub: { fontSize: 13, color: colors.mutedForeground },
+  recorderBar: {
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
+    backgroundColor: colors.card, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
+  },
+  settingsModal: { backgroundColor: colors.card, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, maxHeight: "80%" },
+  settingsSection: { gap: spacing.sm },
+  settingsSectionTitle: { fontSize: 14, fontWeight: "600", color: colors.foreground },
+  statusText: { fontSize: 13, color: colors.mutedForeground, textTransform: "capitalize" },
+  qrToggleBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border },
   card: { backgroundColor: colors.card, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg },
   closedBanner: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md,
     backgroundColor: "rgba(239,68,68,0.1)", borderRadius: radii.md,
   },
   closedText: { color: colors.destructive, fontWeight: "500" },
-  inviteBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  inviteTitle: { fontSize: 14, fontWeight: "600", color: colors.foreground },
   inviteBtns: { flexDirection: "row", gap: spacing.sm },
   shareBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.md, backgroundColor: colors.primary },
   shareBtnText: { color: colors.white, fontWeight: "600", fontSize: 12 },
