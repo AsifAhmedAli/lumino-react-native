@@ -98,7 +98,6 @@ export function RoomDetailScreen({ route, navigation }: any) {
             break;
           case "voice:translated": {
             // SSE sends { messageId, senderName, translatedText, audioBase64, language }
-            // or { message: {...} }
             const msg = event.message || {
               id: event.messageId || `sse-${Date.now()}`,
               senderName: event.senderName || "Unknown",
@@ -112,8 +111,24 @@ export function RoomDetailScreen({ route, navigation }: any) {
             };
             setMessages((prev) => [...prev, msg]);
             setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+            // Notification: haptic + sound
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
             break;
           }
+          case "voice:status":
+            // Processing status updates — ignore
+            break;
+          case "connected":
+          case "heartbeat":
+            // Connection lifecycle events — ignore
+            break;
+          case "participant:updated":
+            if (event.id) {
+              setParticipants((prev) =>
+                prev.map((p) => p.id === event.id ? { ...p, ...event } : p)
+              );
+            }
+            break;
         }
       },
       () => {

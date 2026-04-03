@@ -242,6 +242,7 @@ class ApiClient {
     }
 
     let lastIndex = 0;
+    let currentEventType = "";
 
     xhr.onprogress = () => {
       const text = xhr.responseText;
@@ -251,10 +252,23 @@ class ApiClient {
       const lines = newText.split("\n");
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+        if (!trimmed) {
+          currentEventType = "";
+          continue;
+        }
+        // Capture event type from "event: <name>" lines
+        if (trimmed.startsWith("event: ")) {
+          currentEventType = trimmed.slice(7);
+          continue;
+        }
+        if (!trimmed.startsWith("data: ")) continue;
         try {
-          const event = JSON.parse(trimmed.slice(6));
-          onEvent(event);
+          const data = JSON.parse(trimmed.slice(6));
+          // Inject the event type into the data object
+          if (currentEventType && !data.type) {
+            data.type = currentEventType;
+          }
+          onEvent(data);
         } catch {
           // Skip
         }
