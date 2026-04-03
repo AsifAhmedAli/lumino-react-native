@@ -190,9 +190,13 @@ export function RoomDetailScreen({ route, navigation }: any) {
 
   // Audio playback
   const playMessage = async (msg: any) => {
-    // Stop current playback
+    // Toggle off if already playing this message
     if (playingId === msg.id) {
-      try { playerRef.current?.pause(); } catch {}
+      try {
+        playerRef.current?.pause();
+        playerRef.current?.release();
+        playerRef.current = null;
+      } catch {}
       setPlayingId(null);
       return;
     }
@@ -205,38 +209,41 @@ export function RoomDetailScreen({ route, navigation }: any) {
         break;
       }
     }
-    if (!audioSrc) return;
+    if (!audioSrc) {
+      Alert.alert("No Audio", "This message has no audio available.");
+      return;
+    }
 
     try {
       // Release previous player
-      try { playerRef.current?.release(); } catch {}
+      try {
+        playerRef.current?.pause();
+        playerRef.current?.release();
+        playerRef.current = null;
+      } catch {}
 
+      // Set audio mode for playback
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
 
-      // Create a new player for this audio
+      // Create player with the audio URL
       const newPlayer = createAudioPlayer(audioSrc);
       playerRef.current = newPlayer;
       setPlayingId(msg.id);
 
-      // Wait a moment for loading, then play
-      setTimeout(() => {
-        try {
-          newPlayer.play();
-        } catch (e) {
-          console.warn("Play failed:", e);
+      // Listen for status changes
+      newPlayer.addListener("playbackStatusUpdate", (status: any) => {
+        if (status.didJustFinish) {
           setPlayingId(null);
+          try { newPlayer.release(); } catch {}
+          if (playerRef.current === newPlayer) playerRef.current = null;
         }
-      }, 300);
-
-      // Listen for playback end
-      newPlayer.addListener("playbackStatusUpdate" as any, (status: any) => {
-        if (status?.didJustFinish || status?.isLoaded === false) {
-          setPlayingId(null);
+        // Auto-play once loaded
+        if (status.isLoaded && !status.playing && !status.didJustFinish) {
+          try { newPlayer.play(); } catch {}
         }
       });
-    } catch (e) {
-      console.warn("Playback error:", e);
-      Alert.alert("Error", "Failed to play audio");
+    } catch (e: any) {
+      console.warn("Playback error:", e?.message || e);
       setPlayingId(null);
     }
   };
