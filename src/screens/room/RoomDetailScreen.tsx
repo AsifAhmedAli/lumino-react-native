@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
-  Modal, FlatList,
+  Modal, FlatList, Share,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -243,6 +243,15 @@ export function RoomDetailScreen({ route, navigation }: any) {
     Alert.alert("Copied", "Room link copied to clipboard");
   };
 
+  const shareRoom = async () => {
+    if (!room) return;
+    const link = `${api.baseUrl}/room/${room.code}`;
+    await Share.share({
+      message: `Join my Lumino translation room "${room.name}": ${link}`,
+      title: "Join Lumino Room",
+    });
+  };
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>;
   }
@@ -266,10 +275,16 @@ export function RoomDetailScreen({ route, navigation }: any) {
             <View style={styles.qrCenter}>
               <QRCode value={roomLink} size={160} backgroundColor="transparent" color={colors.foreground} />
             </View>
-            <TouchableOpacity style={styles.copyBtn} onPress={copyLink}>
-              <Ionicons name="copy-outline" size={16} color={colors.primary} />
-              <Text style={styles.copyText}>Copy Room Link</Text>
-            </TouchableOpacity>
+            <View style={styles.shareRow}>
+              <TouchableOpacity style={styles.copyBtn} onPress={copyLink}>
+                <Ionicons name="copy-outline" size={16} color={colors.primary} />
+                <Text style={styles.copyText}>Copy Link</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.shareBtn} onPress={shareRoom}>
+                <Ionicons name="share-outline" size={16} color={colors.white} />
+                <Text style={styles.shareBtnText}>Share</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -409,8 +424,11 @@ const styles = StyleSheet.create({
   },
   closedText: { color: colors.destructive, fontWeight: "500" },
   qrCenter: { alignItems: "center", paddingVertical: spacing.md },
-  copyBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, marginTop: spacing.md },
-  copyText: { color: colors.primary, fontWeight: "500", fontSize: 14 },
+  shareRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.md, marginTop: spacing.md },
+  copyBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: 16, paddingVertical: 8, borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary },
+  copyText: { color: colors.primary, fontWeight: "500", fontSize: 13 },
+  shareBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: 16, paddingVertical: 8, borderRadius: radii.md, backgroundColor: colors.primary },
+  shareBtnText: { color: colors.white, fontWeight: "600", fontSize: 13 },
   recRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.destructive },
   recTimer: { fontSize: 14, color: colors.destructive, fontVariant: ["tabular-nums"] },
